@@ -73,6 +73,20 @@ def compare_blocks(a: bytes, b: bytes) -> bool:
     else:
         return False
 
+def partition(block: bytes, separator: int = 0x01):
+    sep_index = len(block) // 2
+    found = False
+
+    for i in range(len(block)):
+        if block[i] == separator and found == False:
+            found = True
+            sep_index = i
+    
+    if found:
+        return (block[:sep_index], bytes([separator]), block[sep_index+1:])
+    else:
+        return (block[:sep_index], b'', block[sep_index+1:])
+
 def oaep_encoding(message: bytes, label: bytes | None = None):
     """
     message: The message you want to encode
@@ -134,7 +148,8 @@ def rsa_oaep_decrypt(ciphertext: bytes, N: int, d: int, label: bytes | None = No
         #The ciphertext / label has been tampered with
         ok = False
 
-    ps, byte, message = ps_byte_message.partition(bytes([0x01]))
+    #ps, byte, message = ps_byte_message.partition(bytes([0x01])) # Not constant time
+    ps, byte, message = partition(ps_byte_message, 0x01)
     if not byte: # Couldn't find 0x01 to split
         ok = False
     #if ps.strip(bytes([0x00])): # Something other than 0x00 in the first part
