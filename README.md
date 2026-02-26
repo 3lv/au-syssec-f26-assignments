@@ -2,6 +2,7 @@
 
 ## Assignment 1
 - [report](./crypto/report/SYSSEC_Assignment1_Report.pdf)
+- [gen ai declaration](./crypto/report/GenAIDeclaration.pdf)
 - [task2 code](./crypto/rsa-signatures/task_02_darius.py)
 - [task4 code](./crypto/elgamal-encryption/task_04_jendrik.py)
 - [task6 code](./crypto/rsa-encryption/rsa_oaep.py)
