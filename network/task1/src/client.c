@@ -40,6 +40,14 @@ uint8_t* build_icmp_custom_format(uint8_t type, uint8_t code, const uint8_t* con
     return icmp_payload;
 }
 
+uint8_t* encrypt_message(const char* message, size_t message_size, const char* key, size_t key_size) {
+    uint8_t *encrypted = (uint8_t *)malloc(message_size);
+    for (size_t i = 0; i < message_size; i++) {
+        encrypted[i] = message[i] ^ key[i % key_size];
+    }
+    return encrypted;
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 2) {
         fprintf(stderr, "Usage: %s <destination IP>\n", argv[0]);
@@ -63,14 +71,15 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    size_t sml = 32;
+    uint8_t *sm = (uint8_t *)malloc(sml * 1);
     while (1) {
-        size_t sml = 32;
-        uint8_t *sm = (uint8_t *)malloc(sml * 1);
         //Read from stdin
         printf("Enter a message to send: ");
         fgets((char *)sm, sml, stdin);
+        uint8_t *ct = encrypt_message((char *)sm, sml, "mysecretkey", 11);
         //strcpy(sm, "Secret message");
-        uint8_t *icmp = build_icmp_custom_format(47, 0, sm, sml);
+        uint8_t *icmp = build_icmp_custom_format(47, 0, ct, sml);
         uint8_t icmpl = sml + 4*2;
 
         libnet_ptag_t ip = libnet_build_ipv4(
@@ -89,6 +98,7 @@ int main(int argc, char *argv[]) {
             l,
             0
         );
+        free(icmp);
 
         if (ip == -1) {
             fprintf(stderr, "libnet_build_ipv4 failed: %s\n", libnet_geterror(l));
@@ -103,6 +113,7 @@ int main(int argc, char *argv[]) {
             printf("Injected %d bytes\n", bytes);
         }
     }
+    free(sm);
 
     libnet_destroy(l);
     return 0;

@@ -24,6 +24,14 @@ void display_data(const uint8_t *data, int size) {
     printf("\n");
 }
 
+uint8_t* decrypt_message(const uint8_t* encrypted, size_t message_size, const char* key, size_t key_size) {
+    uint8_t *decrypted = (uint8_t *)malloc(message_size);
+    for (size_t i = 0; i < message_size; i++) {
+        decrypted[i] = encrypted[i] ^ key[i % key_size];
+    }
+    return decrypted;
+}
+
 int main(void) {
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_if_t *alldevs = NULL;
@@ -50,8 +58,9 @@ int main(void) {
         // Add the 14 for the Ethernet header and 9 to get to protocol in ip header
         // 20 is the ip header size
         if (header->len >= 34 && data[14 + 9] == 1 && data[14 + 20 + 0] == 47) {
-            char *message = (char *)(data + 14 + 20 + 4*2);
+            char *message = decrypt_message(data + 14 + 20 + 4*2, header->len - 14 - 20 - 4*2, "mysecretkey", 11);
             printf("Received message: %s\n", message);
+            free(message);
         }
         rc = pcap_next_ex(handle, &header, &data);
     }
