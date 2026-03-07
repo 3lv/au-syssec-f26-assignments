@@ -1,0 +1,14 @@
+flush ruleset
+
+table ip testfw {
+        chain input {
+                type filter hook input priority filter; policy drop;
+                icmp type echo-request accept
+                icmp type echo-reply accept
+        }
+        chain output {
+                type filter hook output priority filter; policy drop;
+                icmp type echo-request accept
+                icmp type echo-reply accept
+        }
+}

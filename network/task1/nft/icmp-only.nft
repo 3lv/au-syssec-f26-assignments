@@ -1,0 +1,12 @@
+flush ruleset
+
+table ip testfw {
+        chain input {
+                type filter hook input priority filter; policy drop;
+                ip protocol icmp accept
+        }
+        chain output {
+                type filter hook output priority filter; policy drop;
+                ip protocol icmp accept
+        }
+}
