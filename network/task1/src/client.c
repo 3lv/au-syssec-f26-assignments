@@ -1,6 +1,10 @@
 #include <libnet.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include "crypto.h"
+
+static const unsigned char *KEY = (const unsigned char *)"e8da3236eb043efa91f9406cd8da0e1b";
 
 uint16_t checksum(const void *icmp, size_t total_size) {
     const uint8_t *bytes = (const uint8_t *)icmp;
@@ -40,6 +44,7 @@ uint8_t* build_icmp_custom_format(uint8_t type, uint8_t code, const uint8_t* con
     return icmp_payload;
 }
 
+/*
 uint8_t* encrypt_message(const char* message, size_t message_size, const char* key, size_t key_size) {
     uint8_t *encrypted = (uint8_t *)malloc(message_size);
     for (size_t i = 0; i < message_size; i++) {
@@ -47,6 +52,8 @@ uint8_t* encrypt_message(const char* message, size_t message_size, const char* k
     }
     return encrypted;
 }
+*/
+
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -71,16 +78,66 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    size_t sml = 32;
-    uint8_t *sm = (uint8_t *)malloc(sml * 1);
+    size_t sml = 256;
+    uint8_t *sm = (uint8_t *)malloc(sml);
+    if (!sm) {
+        fprintf(stderr, "Failed to allocate message buffer\n");
+        libnet_destroy(l);
+        return 1;
+    }
     while (1) {
         //Read from stdin
         printf("Enter a message to send: ");
-        fgets((char *)sm, sml, stdin);
-        uint8_t *ct = encrypt_message((char *)sm, sml, "mysecretkey", 11);
-        //strcpy(sm, "Secret message");
-        uint8_t *icmp = build_icmp_custom_format(47, 0, ct, sml);
-        uint8_t icmpl = sml + 4*2;
+        if (!fgets((char *)sm, sml, stdin)) {
+            break;
+        }
+        size_t msg_len = strnlen((char *)sm, sml);
+        if (msg_len > 0 && sm[msg_len - 1] == '\n') {
+            sm[msg_len - 1] = '\0';
+            msg_len--;
+        }
+        if (msg_len == 0) {
+            continue;
+        }
+        //uint8_t *ct = encrypt_message((char *)sm, sml, KEY, 32);
+        uint8_t aad[16] = {0};
+        uint8_t iv[12];
+        if (RAND_bytes(iv, sizeof(iv)) != 1) {
+            fprintf(stderr, "Failed to generate random IV\n");
+            free(sm);
+            libnet_destroy(l);
+            return 1;
+        }
+        uint8_t tag[16];
+        uint8_t *ct = malloc(msg_len);
+        if (!ct) {
+            fprintf(stderr, "Failed to allocate ciphertext buffer\n");
+            break;
+        }
+        int ctl = aes_gcm_encrypt(sm, (int)msg_len, aad, sizeof(aad), KEY, iv, sizeof(iv), ct, tag);
+        if (ctl < 0) {
+            fprintf(stderr, "Encryption failed\n");
+            free(ct);
+            continue;
+        }
+        size_t full_ctl = 12 + (size_t)ctl + 16;
+        uint8_t *full_ct = malloc(full_ctl);
+        if (!full_ct) {
+            fprintf(stderr, "Failed to allocate packet payload\n");
+            free(ct);
+            break;
+        }
+        memcpy(full_ct, iv, 12);
+        memcpy(full_ct + 12, ct, (size_t)ctl);
+        memcpy(full_ct + 12 + ctl, tag, 16);
+        uint8_t *icmp = build_icmp_custom_format(47, 0, full_ct, full_ctl);
+        free(full_ct);
+        free(ct);
+        if (!icmp) {
+            fprintf(stderr, "Failed to build ICMP payload\n");
+            break;
+        }
+        uint16_t icmpl = (uint16_t)(full_ctl + 4*2);
 
         libnet_ptag_t ip = libnet_build_ipv4(
             LIBNET_IPV4_H + icmpl,   // total length
@@ -94,7 +151,7 @@ int main(int argc, char *argv[]) {
             src_ip,
             dst_ip,
             icmp,                // payload
-            icmpl,                   // payload size
+            icmpl,                // payload size
             l,
             0
         );
@@ -112,6 +169,7 @@ int main(int argc, char *argv[]) {
         } else {
             printf("Injected %d bytes\n", bytes);
         }
+        libnet_clear_packet(l);
     }
     free(sm);
 
