@@ -1,4 +1,12 @@
-###
+# Task 1 (tricky icmp)
+
+
+## Quick start:
+```bash
+make && sudo ./client 192.168.1.1 # Run the client
+make && sudo ./server
+```
+>Start to type and send messages
 
 Inspect icmp packets:
 ```bash
@@ -22,12 +30,17 @@ Disable firewall:
 nft flush ruleset
 ```
 
+## Details:
 
+Sending via icmp type 47 code 0
 
-using aes-gcm-128 for message encryption
+Using aes-gcm-128 for message encryption
+icmp content: iv+ct+tag
 
-Generate key with
+aad[16] = {0}  // I.e not really used
+
+Generated key with
 ```bash
 openssl rand -hex 16
 ```
-Then hardcode it in the code
+Then hardcoded it in the code(fine due to the task description)
