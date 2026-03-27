@@ -1,0 +1,14 @@
+flush ruleset
+
+table inet nat {
+    # From external to this machine as router
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+        tcp dport { 80, 443, 5000 } counter redirect to :8080
+    }
+    # Handles traffic from this machine (optional)
+    #chain output {
+    #    type nat hook output priority filter; policy accept;
+    #    skuid != "mitmproxyuser" tcp dport { 80, 443, 5000 } counter redirect to :8080
+    #}
+}

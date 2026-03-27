@@ -1,0 +1,38 @@
+flush ruleset
+
+# Prevent conntrack from tracking port-5000 connections.
+# Without this, conntrack re-processes re-injected packets (after NFQUEUE
+# returns them) and marks them INVALID because the adjusted SEQ/ACK numbers
+# no longer match its original tracking state.
+table inet raw {
+    chain prerouting {
+        type filter hook prerouting priority -300; policy accept;
+        tcp sport 5000 notrack
+    }
+    chain output {
+        type filter hook output priority -300; policy accept;
+        tcp dport 5000 notrack
+    }
+}
+
+table inet filter {
+    # For localhost testing: queue both directions so we can adjust
+    # SEQ on outgoing (curl→server) and ACK on incoming (server→curl).
+    chain output {
+        type filter hook output priority 0; policy accept;
+        meta mark 1 accept          # skip packets we already processed
+        tcp dport 5000 queue num 0
+    }
+    chain input {
+        type filter hook input priority 0; policy accept;
+        meta mark 1 accept
+        tcp sport 5000 queue num 0
+    }
+
+    # For actual MITM router: queue forwarded traffic (both dirs in one chain).
+    # Comment out output/input above and uncomment this when acting as a router:
+    #chain forward {
+    #    type filter hook forward priority 0; policy accept;
+    #    tcp dport { 80, 5000 } queue num 0
+    #}
+}

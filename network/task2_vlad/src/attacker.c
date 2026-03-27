@@ -188,68 +188,137 @@ int main(int argc, char *argv[]) {
             memcpy(&opts[4], &tsval_be, 4);
             memcpy(&opts[8], &tsecr_be, 4);
 
-            libnet_ptag_t tcp_opts_tag = libnet_build_tcp_options(opts, sizeof(opts), l, 0);
-            if (tcp_opts_tag == -1) {
-                fprintf(stderr, "libnet_build_tcp_options failed: %s\n", libnet_geterror(l));
-                break;
-            }
-            printf("Built TCP options with timestamp\n");
-            printf("Timestamp option: TSval=%u TSecr=%u\n", tsval, tsecr);
-            // Recreate the same ACK packet that stats i still have to receive the bytes at ack
-            libnet_ptag_t tcp_tag = libnet_build_tcp(
-                /*
-                dst_port,
-                src_port,
-                */
-                src_port,
-                dst_port,
-                seq, //seq
-                ack, //ack
-                TH_ACK | TH_RST, // Control flags
-                window, // window
-                0, // checksum, autofill
-                0, // urgent pointer
-                0, // total length of tcp packet
-                NULL, // payload
-                0, // payload size
-                l, // libnet context
-                0 // 0 to build new one
-            );
-            if (tcp_tag == -1) {
-                fprintf(stderr, "libnet_build_tcp failed: %s\n", libnet_geterror(l));
-                break;
-            }
-            // Create ip header
-            libnet_ptag_t ip_tag = libnet_build_ipv4(
-                LIBNET_IPV4_H + LIBNET_TCP_H, // total length
-                0, // TOS
-                0x1234, // ID
-                0, // fragmentation
-                64, // TTL
-                IPPROTO_TCP, // protocol
-                0, // checksum, autofill
-                /*
-                dip,
-                sip,
-                */
-                sip,
-                dip,
-                NULL, // payload
-                0, // payload size
-                l, // libnet context
-                0 // 0 to build new one
-            );
-            if (ip_tag == -1) {
-                fprintf(stderr, "libnet_build_ipv4 failed: %s\n", libnet_geterror(l));
-                break;
-            }
-            // Send 3 more times:
-            for (int i = 0; i < 4; i++) {
-                int bytes = libnet_write(l);
-                if (bytes == -1) {
-                    fprintf(stderr, "libnet_write failed: %s\n", libnet_geterror(l));
-                } else {
-                    printf("Injected %d bytes(eth + ip + tcp)\n", bytes);
+            if (argv[3][0] == 'R') {
+                printf("Using RST approach\n");
+
+                libnet_ptag_t tcp_opts_tag = libnet_build_tcp_options(opts, sizeof(opts), l, 0);
+                if (tcp_opts_tag == -1) {
+                    fprintf(stderr, "libnet_build_tcp_options failed: %s\n", libnet_geterror(l));
+                    break;
+                }
+                printf("Built TCP options with timestamp\n");
+                printf("Timestamp option: TSval=%u TSecr=%u\n", tsval, tsecr);
+                // Recreate the same ACK packet that stats i still have to receive the bytes at ack
+                libnet_ptag_t tcp_tag = libnet_build_tcp(
+                    /*
+                    dst_port,
+                    src_port,
+                    */
+                    src_port,
+                    dst_port,
+                    seq, //seq
+                    ack, //ack
+                    TH_ACK | TH_RST, // Control flags
+                    window, // window
+                    0, // checksum, autofill
+                    0, // urgent pointer
+                    0, // total length of tcp packet
+                    NULL, // payload
+                    0, // payload size
+                    l, // libnet context
+                    0 // 0 to build new one
+                );
+                if (tcp_tag == -1) {
+                    fprintf(stderr, "libnet_build_tcp failed: %s\n", libnet_geterror(l));
+                    break;
+                }
+                // Create ip header
+                libnet_ptag_t ip_tag = libnet_build_ipv4(
+                    LIBNET_IPV4_H + LIBNET_TCP_H, // total length
+                    0, // TOS
+                    0x1234, // ID
+                    0, // fragmentation
+                    64, // TTL
+                    IPPROTO_TCP, // protocol
+                    0, // checksum, autofill
+                    /*
+                    dip,
+                    sip,
+                    */
+                    sip,
+                    dip,
+                    NULL, // payload
+                    0, // payload size
+                    l, // libnet context
+                    0 // 0 to build new one
+                );
+                if (ip_tag == -1) {
+                    fprintf(stderr, "libnet_build_ipv4 failed: %s\n", libnet_geterror(l));
+                    break;
+                }
+                for (int i = 0; i < 1; i++) {
+                    int bytes = libnet_write(l);
+                    if (bytes == -1) {
+                        fprintf(stderr, "libnet_write failed: %s\n", libnet_geterror(l));
+                    } else {
+                        printf("Injected %d bytes(eth + ip + tcp)\n", bytes);
+                    }
+                }
+            } else {
+                printf("Using ACK approach\n");
+                // Recreate the same ACK packet that stats i still have to receive the bytes at ack
+                libnet_ptag_t tcp_opts_tag = libnet_build_tcp_options(opts, sizeof(opts), l, 0);
+                if (tcp_opts_tag == -1) {
+                    fprintf(stderr, "libnet_build_tcp_options failed: %s\n", libnet_geterror(l));
+                    break;
+                }
+                printf("Built TCP options with timestamp\n");
+                printf("Timestamp option: TSval=%u TSecr=%u\n", tsval, tsecr);
+                libnet_ptag_t tcp_tag = libnet_build_tcp(
+                    /*
+                    dst_port,
+                    src_port,
+                    */
+                    src_port,
+                    dst_port,
+                    seq, //seq
+                    ack, //ack
+                    TH_ACK, // Control flags
+                    window, // window
+                    0, // checksum, autofill
+                    0, // urgent pointer
+                    0, // total length of tcp packet
+                    NULL, // payload
+                    0, // payload size
+                    l, // libnet context
+                    0 // 0 to build new one
+                );
+                if (tcp_tag == -1) {
+                    fprintf(stderr, "libnet_build_tcp failed: %s\n", libnet_geterror(l));
+                    break;
+                }
+                // Create ip header
+                libnet_ptag_t ip_tag = libnet_build_ipv4(
+                    LIBNET_IPV4_H + LIBNET_TCP_H, // total length
+                    0, // TOS
+                    0x1234, // ID
+                    0, // fragmentation
+                    64, // TTL
+                    IPPROTO_TCP, // protocol
+                    0, // checksum, autofill
+                    /*
+                    dip,
+                    sip,
+                    */
+                    sip,
+                    dip,
+                    NULL, // payload
+                    0, // payload size
+                    l, // libnet context
+                    0 // 0 to build new one
+                );
+                if (ip_tag == -1) {
+                    fprintf(stderr, "libnet_build_ipv4 failed: %s\n", libnet_geterror(l));
+                    break;
+                }
+                // Send 3 more times:
+                for (int i = 0; i < 3; i++) {
+                    int bytes = libnet_write(l);
+                    if (bytes == -1) {
+                        fprintf(stderr, "libnet_write failed: %s\n", libnet_geterror(l));
+                    } else {
+                        printf("Injected %d bytes(eth + ip + tcp)\n", bytes);
+                    }
                 }
             }
             libnet_clear_packet(l);

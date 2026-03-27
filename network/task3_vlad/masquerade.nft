@@ -1,0 +1,15 @@
+flush ruleset
+
+table inet nat {
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+        # Redirect iPhone traffic to mitmproxy
+        ip saddr 10.249.7.212 tcp dport { 80, 443, 5000 } counter redirect to :8080
+    }
+
+    chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        # Hide the iPhone behind the Linux IP so it can get back to the internet
+        masquerade
+    }
+}
